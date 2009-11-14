@@ -270,21 +270,8 @@ NOTES:
 /* We assume that systems which don't have IPv6
    headers don't have ntop and pton either */
 
-#if defined(INET6_ADDRSTRLEN) && defined(IPV6_V6ONLY) && !defined(NO_IPV6)
-#  define HAVE_IPV6
-#  define ADDRSTRLEN INET6_ADDRSTRLEN
-#  if defined(SOL_IPV6)
-#    define IPV6_LEVEL SOL_IPV6
-#  else
-#    define IPV6_LEVEL IPPROTO_IPV6
-#  endif
-#elif defined(INET_ADDRSTRLEN)
-#  undef HAVE_IPV6
-#  define ADDRSTRLEN INET_ADDRSTRLEN
-#else
 #  undef HAVE_IPV6
 #  define ADDRSTRLEN 16 /* 4*3 + 3 dots + NULL */
-#endif
 
 /* Can't do scripts without fork */
 #ifdef NOFORK
