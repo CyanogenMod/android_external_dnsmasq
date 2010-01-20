@@ -46,6 +46,8 @@
 #      define LEASEFILE "/var/db/dnsmasq.leases"
 #   elif defined(__sun__) || defined (__sun)
 #      define LEASEFILE "/var/cache/dnsmasq.leases"
+#   elif defined(__ANDROID__)
+#      define LEASEFILE "/data/misc/dhcp/dnsmasq.leases"
 #   else
 #      define LEASEFILE "/var/lib/misc/dnsmasq.leases"
 #   endif

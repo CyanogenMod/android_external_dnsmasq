@@ -385,7 +385,7 @@ int main (int argc, char **argv)
 	    (1 << CAP_NET_ADMIN) | (1 << CAP_NET_RAW) | (1 << CAP_SETUID);
 	  
 	  /* Tell kernel to not clear capabilities when dropping root */
-	  if (capset(hdr, data) == -1 || prctl(PR_SET_KEEPCAPS, 1) == -1)
+	  if (capset(hdr, data) == -1 || prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) == -1)
 	    bad_capabilities = errno;
 			  
 #elif defined(HAVE_SOLARIS_NETWORK)
@@ -441,7 +441,7 @@ int main (int argc, char **argv)
   
 #ifdef HAVE_LINUX_NETWORK
   if (daemon->options & OPT_DEBUG) 
-    prctl(PR_SET_DUMPABLE, 1);
+    prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
 #endif
 
   if (daemon->port == 0)

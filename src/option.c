@@ -1110,7 +1110,10 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
       if (strchr(arg, '/'))
 	daemon->log_file = opt_string_alloc(arg);
       else
-	{	  
+	{
+#ifdef __ANDROID__
+	    problem = "Android does not support log facilities";
+#else	  
 	  for (i = 0; facilitynames[i].c_name; i++)
 	    if (hostname_isequal((char *)facilitynames[i].c_name, arg))
 	      break;
@@ -1119,6 +1122,7 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 	    daemon->log_fac = facilitynames[i].c_val;
 	  else
 	    problem = "bad log facility";
+#endif
 	}
       break;
       
