@@ -779,6 +779,9 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp);
 int random_sock(int family);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
+#ifdef __ANDROID__
+int set_servers(const char *servers);
+#endif
 void check_servers(void);
 int enumerate_interfaces();
 struct listener *create_wildcard_listeners(void);

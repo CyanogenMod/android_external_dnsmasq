@@ -64,6 +64,10 @@ static void sig_handler(int sig);
 static void async_event(int pipe, time_t now);
 static void fatal_event(struct event_desc *ev);
 static void poll_resolv(void);
+#ifdef __ANDROID__
+static int set_android_listeners(fd_set *set, int *maxfdp);
+static int check_android_listeners(fd_set *set);
+#endif
 
 int main (int argc, char **argv)
 {
@@ -278,7 +282,9 @@ int main (int argc, char **argv)
   
   if (!(daemon->options & OPT_DEBUG))   
     {
+#ifndef __ANDROID__
       int nullfd;
+#endif
 
       /* The following code "daemonizes" the process. 
 	 See Stevens section 12.4 */
@@ -344,13 +350,15 @@ int main (int argc, char **argv)
 	      _exit(0);
 	    }
 	}
-         
+
+#ifndef __ANDROID__
       /* open  stdout etc to /dev/null */
       nullfd = open("/dev/null", O_RDWR);
       dup2(nullfd, STDOUT_FILENO);
       dup2(nullfd, STDERR_FILENO);
       dup2(nullfd, STDIN_FILENO);
       close(nullfd);
+#endif
     }
   
    log_err = log_start(ent_pw, err_pipe[1]); 
@@ -577,6 +585,9 @@ int main (int argc, char **argv)
 	  t.tv_usec = 0;
 	  tp = &t;
 	}
+#ifdef __ANDROID__
+      set_android_listeners(&rset, &maxfd);
+#endif
 
       /* Whilst polling for the dbus, or doing a tftp transfer, wake every quarter second */
       if (daemon->tftp_trans ||
@@ -667,6 +678,10 @@ int main (int argc, char **argv)
 	    my_syslog(LOG_INFO, _("connected to system DBus"));
 	}
       check_dbus_listeners(&rset, &wset, &eset);
+#endif
+
+#ifdef __ANDROID__
+      check_android_listeners(&rset);
 #endif
       
       check_dns_listeners(&rset, now);
@@ -959,6 +974,44 @@ void clear_cache_and_reload(time_t now)
     }
 #endif
 }
+
+#ifdef __ANDROID__
+
+static int set_android_listeners(fd_set *set, int *maxfdp) {
+    FD_SET(STDIN_FILENO, set);
+    bump_maxfd(STDIN_FILENO, maxfdp);
+    return 0;
+}
+
+static int check_android_listeners(fd_set *set) {
+    if (FD_ISSET(STDIN_FILENO, set)) {
+        char buffer[1024];
+        int rc;
+
+        if ((rc = read(STDIN_FILENO, buffer, sizeof(buffer) -1)) < 0) {
+            my_syslog(LOG_ERR, _("Error reading from stdin (%s)"), strerror(errno));
+            return -1;
+        }
+        buffer[rc] = '\0';
+        char *next = buffer;
+        char *cmd;
+
+        if (!(cmd = strsep(&next, ":"))) {
+            my_syslog(LOG_ERR, _("Malformatted msg '%s'"), buffer);
+            return -1;
+        }
+
+        if (!strcmp(buffer, "update_dns")) {
+            set_servers(&buffer[11]);
+            check_servers();
+        } else {
+            my_syslog(LOG_ERR, _("Unknown cmd '%s'"), cmd);
+            return -1;
+        }
+    }
+    return 0;
+}
+#endif
 
 static int set_dns_listeners(time_t now, fd_set *set, int *maxfdp)
 {

@@ -16,6 +16,10 @@
 
 #include "dnsmasq.h"
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 /* Implement logging to /dev/log asynchronously. If syslogd is 
    making DNS lookups through dnsmasq, and dnsmasq blocks awaiting
    syslogd, then the two daemons can deadlock. We get around this
@@ -261,6 +265,9 @@ void my_syslog(int priority, const char *format, ...)
   size_t len;
   pid_t pid = getpid();
   char *func = "";
+#ifdef __ANDROID__
+  int alog_lvl;
+#endif
 
   if ((LOG_FACMASK & priority) == MS_TFTP)
     func = "-tftp";
@@ -277,6 +284,20 @@ void my_syslog(int priority, const char *format, ...)
       va_end(ap);
       fputc('\n', stderr);
     }
+
+#ifdef __ANDROID__
+    if (priority <= LOG_ERR)
+      alog_lvl = ANDROID_LOG_ERROR;
+    else if (priority == LOG_WARNING)
+      alog_lvl = ANDROID_LOG_WARN;
+    else if (priority <= LOG_INFO)
+      alog_lvl = ANDROID_LOG_INFO;
+    else
+      alog_lvl = ANDROID_LOG_DEBUG;
+    va_start(ap, format);
+    __android_log_vprint(alog_lvl, "dnsmasq", format, ap);
+    va_end(ap);
+#else
 
   if (log_fd == -1)
     {
@@ -369,7 +390,8 @@ void my_syslog(int priority, const char *format, ...)
 	  /* Have another go now */
 	  log_write();
 	}
-    } 
+    }
+#endif
 }
 
 void set_log_writer(fd_set *set, int *maxfdp)
