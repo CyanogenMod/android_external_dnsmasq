@@ -24,7 +24,9 @@
 
 /* Get linux C library versions. */
 #ifdef __linux__
-#  define _GNU_SOURCE
+#  ifndef __ANDROID__
+#      define _GNU_SOURCE
+#  endif
 #  include <features.h> 
 #endif
 
@@ -37,11 +39,12 @@
 #  include <nameser.h>
 #  include <arpa/nameser_compat.h>
 #else
-#  include <arpa/nameser.h>
+#  ifdef __ANDROID__
+#    include "nameser.h"
+#  else
+#    include <arpa/nameser.h>
+#  endif
 #endif
-
-#include <arpa_nameser.h>
-#include <arpa_nameser_compat.h>
 
 /* and this. */
 #include <getopt.h>
@@ -82,7 +85,11 @@
 #include <pwd.h>
 #include <grp.h>
 #include <stdarg.h>
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__sun__) || defined (__sun) || defined (__ANDROID__)
 #  include <netinet/if_ether.h>
+#else
+#  include <net/ethernet.h>
+#endif
 #include <net/if_arp.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
@@ -772,6 +779,9 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp);
 int random_sock(int family);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
+#ifdef __ANDROID__
+int set_servers(const char *servers);
+#endif
 void check_servers(void);
 int enumerate_interfaces();
 struct listener *create_wildcard_listeners(void);

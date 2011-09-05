@@ -23,6 +23,35 @@ static volatile int mem_recover = 0;
 static jmp_buf mem_jmp;
 static void one_file(char *file, int nest, int hard_opt);
 
+/* Solaris headers don't have facility names. */
+#ifdef HAVE_SOLARIS_NETWORK
+static const struct {
+  char *c_name;
+  unsigned int c_val;
+}  facilitynames[] = {
+  { "kern",   LOG_KERN },
+  { "user",   LOG_USER },
+  { "mail",   LOG_MAIL },
+  { "daemon", LOG_DAEMON },
+  { "auth",   LOG_AUTH },
+  { "syslog", LOG_SYSLOG },
+  { "lpr",    LOG_LPR },
+  { "news",   LOG_NEWS },
+  { "uucp",   LOG_UUCP },
+  { "audit",  LOG_AUDIT },
+  { "cron",   LOG_CRON },
+  { "local0", LOG_LOCAL0 },
+  { "local1", LOG_LOCAL1 },
+  { "local2", LOG_LOCAL2 },
+  { "local3", LOG_LOCAL3 },
+  { "local4", LOG_LOCAL4 },
+  { "local5", LOG_LOCAL5 },
+  { "local6", LOG_LOCAL6 },
+  { "local7", LOG_LOCAL7 },
+  { NULL, 0 }
+};
+#endif
+
 #ifndef HAVE_GETOPT_LONG
 struct myoption {
   const char *name;
@@ -1076,6 +1105,27 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 	break;
       }
 
+    case '8': /* --log-facility */
+      /* may be a filename */
+      if (strchr(arg, '/'))
+	daemon->log_file = opt_string_alloc(arg);
+      else
+	{
+#ifdef __ANDROID__
+	    problem = "Android does not support log facilities";
+#else	  
+	  for (i = 0; facilitynames[i].c_name; i++)
+	    if (hostname_isequal((char *)facilitynames[i].c_name, arg))
+	      break;
+	  
+	  if (facilitynames[i].c_name)
+	    daemon->log_fac = facilitynames[i].c_val;
+	  else
+	    problem = "bad log facility";
+#endif
+	}
+      break;
+      
     case 'x': /* --pid-file */
       daemon->runfile = opt_string_alloc(arg);
       break;

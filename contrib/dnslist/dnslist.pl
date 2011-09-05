@@ -1,3 +1,271 @@
+#!/usr/bin/perl
+
+# dnslist - Read state file from dnsmasq and create a nice web page to display
+#           a list of DHCP clients.
+# 
+# Copyright (C) 2004  Thomas Tuttle
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTIBILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program*; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# 
+# * The license is in fact included at the end of this file, and can
+#   either be viewed by reading everything after "__DATA__" or by
+#   running dnslist with the '-l' option.
+# 
+# Version: 0.2
+# Author:  Thomas Tuttle
+# Email:   dnslist.20.thinkinginbinary@spamgourmet.org
+# License: GNU General Public License, version 2.0
+#
+# v. 0.0: Too ugly to publish, thrown out.
+#
+# v. 0.1: First rewrite.
+#         Added master host list so offline hosts can still be displayed.
+#         Fixed modification detection (a newer modification time is lower.)
+#
+# v. 0.2: Fixed Client ID = "*" => "None"
+#         Fixed HTML entities (a client ID of ????<? screwed it up)
+#         Fixed command-line argument processing (apparently, "shift @ARGV" !=
+#             "$_ = shift @ARGV"...)
+#         Added license information.
+
+use Template;
+
+# Location of state file.  (This is the dnsmasq default.)
+# Change with -s <file>
+my $dnsmasq_state_file = '/var/lib/misc/dnsmasq.leases';
+# Location of template.  (Assumed to be in current directory.)
+# Change with -t <file>
+my $html_template_file = 'dnslist.tt2';
+# File to write HTML page to.  (This is where Slackware puts WWW pages.  It may
+# be different on other systems.  Make sure the permissions are set correctly
+# for it.)
+my $html_output_file = '/var/www/htdocs/dhcp.html';
+# Time to wait after each page update.  (The state file is checked for changes
+# before each update but is not read in each time, in case it is very big.  The
+# page is rewritten just so the "(updated __/__ __:__:__)" text changes ;-)
+my $wait_time = 2;
+
+# Read command-line arguments.
+while ($_ = shift @ARGV) {
+	if (/-s/) { $dnsmasq_state_file = shift; next; }
+	if (/-t/) { $html_template_file = shift; next; }
+	if (/-o/) { $html_output_file = shift;   next; }
+	if (/-d/) { $wait_time = shift;          next; }
+	if (/-l/) { show_license();              exit; }
+	die "usage: dnslist [-s state_file] [-t template_file] [-o output_file] [-d delay_time]\n";
+}
+
+# Master list of clients, offline and online.
+my $list = {};
+# Sorted host list.  (It's actually sorted by IP--the sub &byip() compares two
+# IP addresses, octet by octet, and figures out which is higher.)
+my @hosts = ();
+# Last time the state file was changed.
+my $last_state_change;
+
+# Check for a change to the state file.
+sub check_state {
+	if (defined $last_state_change) {
+		if (-M $dnsmasq_state_file < $last_state_change) {
+			print "check_state: state file has been changed.\n";
+			$last_state_change = -M $dnsmasq_state_file;
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		# Last change undefined, so we are running for the first time.
+		print "check_state: reading state file at startup.\n";
+		read_state();
+		$last_state_change = -M $dnsmasq_state_file;
+		return 1;
+	}
+}
+
+# Read data in state file.
+sub read_state {
+	my $old;
+	my $new;
+	# Open file.
+	unless (open STATE, $dnsmasq_state_file) {
+		warn "read_state: can't open $dnsmasq_state_file!\n";
+		return 0;
+	}
+	# Mark all hosts as offline, saving old state.
+	foreach $ether (keys %{$list}) {
+		$list->{$ether}->{'old_online'} = $list->{$ether}->{'online'};
+		$list->{$ether}->{'online'} = 0;
+	}
+	# Read hosts.
+	while (<STATE>) {
+		chomp;
+		@host{qw/raw_lease ether_addr ip_addr hostname raw_client_id/} = split /\s+/;
+		$ether = $host{ether_addr};
+		# Mark each online host as online.
+		$list->{$ether}->{'online'} = 1;
+		# Copy data to master list.
+		foreach $key (keys %host) {
+			$list->{$ether}->{$key} = $host{$key};
+		}
+	}
+	close STATE;
+	# Handle changes in offline/online state.  (The sub &do_host() handles
+	# all of the extra stuff to do with a host's data once it is read.
+	foreach $ether (keys %{$list}) {
+		$old = $list->{$ether}->{'old_online'};
+		$new = $list->{$ether}->{'online'};
+		if (not $old) {
+			if (not $new) {
+				do_host($ether, 'offline');
+			} else {
+				do_host($ether, 'join');
+			}
+		} else {
+			if (not $new) {
+				do_host($ether, 'leave');
+			} else {
+				do_host($ether, 'online');
+			}
+		}
+	}
+	# Sort hosts by IP ;-)
+	@hosts = sort byip values %{$list};
+	# Copy sorted list to template data store.
+	$data->{'hosts'} = [ @hosts ];
+}
+
+# Do stuff per host.
+sub do_host {
+	my ($ether, $status) = @_;
+	
+	# Find textual representation of DHCP client ID.
+	if ($list->{$ether}->{'raw_client_id'} eq '*') {
+		$list->{$ether}->{'text_client_id'} = 'None';
+	} else {
+		my $text = "";
+		foreach $char (split /:/, $list->{$ether}->{'raw_client_id'}) {
+			$char = pack('H2', $char);
+			if (ord($char) >= 32 and ord($char) <= 127) {
+				$text .= $char;
+			} else {
+				$text .= "?";
+			}
+		}
+		$list->{$ether}->{'text_client_id'} = $text;
+	}
+		
+	# Convert lease expiration date/time to text.
+	if ($list->{$ether}->{'raw_lease'} == 0) {
+		$list->{$ether}->{'text_lease'} = 'Never';
+	} else {
+		$list->{$ether}->{'text_lease'} = nice_time($list->{$ether}->{'raw_lease'});
+	}
+	
+	if ($status eq 'offline') {
+		# Nothing to do.
+	} elsif ($status eq 'online') {
+		# Nothing to do.
+	} elsif ($status eq 'join') {
+		# Update times for joining host.
+		print "do_host: $ether joined the network.\n";
+		$list->{$ether}->{'join_time'} = time;
+		$list->{$ether}->{'since'} = nice_time(time);
+	} elsif ($status eq 'leave') {
+		# Update times for leaving host.
+		print "do_host: $ether left the network.\n";
+		$list->{$ether}->{'leave_time'} = time;
+		$list->{$ether}->{'since'} = nice_time(time);
+	}
+	
+}
+
+# Convert time to a string representation.
+sub nice_time {
+	my $time = shift;
+	my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $dst) = localtime($time);
+	$sec = pad($sec, '0', 2);
+	$min = pad($min, '0', 2);
+	$hour = pad($hour, '0', 2);
+	$mon = pad($mon, '0', 2);
+	$mday = pad($mday, '0', 2);
+	return "$mon/$mday $hour:$min:$sec";
+}
+
+# Pad string to a certain length by repeatedly prepending another string.
+sub pad {
+	my ($text, $pad, $length) = @_;
+	while (length($text) < $length) {
+		$text = "$pad$text";
+	}
+	return $text;
+}
+
+# Compare two IP addresses.  (Uses $a and $b from sort.)
+sub byip {
+	# Split into octets.
+	my @a = split /\./, $a->{ip_addr};
+	my @b = split /\./, $b->{ip_addr};
+	# Compare octets.
+	foreach $n (0..3) {
+		return $a[$n] <=> $b[$n] if ($a[$n] != $b[$n]);
+	}
+	# If we get here there is no difference.
+	return 0;
+}
+		
+# Output HTML file.
+sub write_output {
+	# Create new template object.
+	my $template = Template->new(
+		{
+			ABSOLUTE => 1, # /var/www/... is an absolute path
+			OUTPUT => $html_output_file # put it here, not STDOUT
+		}
+	);
+	$data->{'updated'} = nice_time(time); # add "(updated ...)" to file
+	unless ($template->process($html_template_file, $data)) { # do it
+		warn "write_output: Template Toolkit error: " . $template->error() . "\n";
+		return 0;
+	}
+	print "write_output: page updated.\n";
+	return 1;
+}
+
+sub show_license {
+	while (<DATA>) {
+		print;
+		$line++;
+		if ($line == 24) { <>; $line = 1; }
+	}
+}
+
+# Main loop.
+while (1) {
+	# Check for state change.
+	if (check_state()) {
+		read_state();
+		sleep 1; # Sleep for a second just so we don't wear anything
+		         # out.  (By not sleeping the whole time after a change
+			 # we can detect rapid changes more easily--like if 300
+			 # hosts all come back online, they show up quicker.)
+	} else {
+		sleep $wait_time; # Take a nap.
+	}
+	write_output(); # Write the file anyway.
+}
+__DATA__
 		    GNU GENERAL PUBLIC LICENSE
 		       Version 2, June 1991
 
@@ -55,7 +323,7 @@ patent must be licensed for everyone's free use or not licensed at all.
 
   The precise terms and conditions for copying, distribution and
 modification follow.
-
+
 		    GNU GENERAL PUBLIC LICENSE
    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
@@ -110,7 +378,7 @@ above, provided that you also meet all of these conditions:
     License.  (Exception: if the Program itself is interactive but
     does not normally print such an announcement, your work based on
     the Program is not required to print an announcement.)
-
+
 These requirements apply to the modified work as a whole.  If
 identifiable sections of that work are not derived from the Program,
 and can be reasonably considered independent and separate works in
@@ -168,7 +436,7 @@ access to copy from a designated place, then offering equivalent
 access to copy the source code from the same place counts as
 distribution of the source code, even though third parties are not
 compelled to copy the source along with the object code.
-
+
   4. You may not copy, modify, sublicense, or distribute the Program
 except as expressly provided under this License.  Any attempt
 otherwise to copy, modify, sublicense or distribute the Program is
@@ -225,7 +493,7 @@ impose that choice.
 
 This section is intended to make thoroughly clear what is believed to
 be a consequence of the rest of this License.
-
+
   8. If the distribution and/or use of the Program is restricted in
 certain countries either by patents or by copyrighted interfaces, the
 original copyright holder who places the Program under this License
@@ -278,7 +546,7 @@ PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGES.
 
 		     END OF TERMS AND CONDITIONS
-
+
 	    How to Apply These Terms to Your New Programs
 
   If you develop a new program, and you want it to be of the greatest
@@ -291,7 +559,7 @@ convey the exclusion of warranty; and each file should have at least
 the "copyright" line and a pointer to where the full notice is found.
 
     <one line to give the program's name and a brief idea of what it does.>
-    Copyright (C) 19yy  <name of author>
+    Copyright (C) <year>  <name of author>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -313,7 +581,7 @@ Also add information on how to contact you by electronic and paper mail.
 If the program is interactive, make it output a short notice like this
 when it starts in an interactive mode:
 
-    Gnomovision version 69, Copyright (C) 19yy name of author
+    Gnomovision version 69, Copyright (C) year name of author
     Gnomovision comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
     This is free software, and you are welcome to redistribute it
     under certain conditions; type `show c' for details.

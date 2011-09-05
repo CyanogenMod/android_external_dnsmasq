@@ -737,6 +737,107 @@ void check_servers(void)
   daemon->servers = ret;
 }
 
+#ifdef __ANDROID__
+/*
+ * Takes a string in the format "1.2.3.4:1.2.3.4:..." - up to 1024 bytes in length
+ */
+int set_servers(const char *servers)
+{
+  char s[1024];
+  struct server *old_servers = NULL;
+  struct server *new_servers = NULL;
+  struct server *serv;
+
+  strncpy(s, servers, sizeof(s));
+
+  /* move old servers to free list - we can reuse the memory
+     and not risk malloc if there are the same or fewer new servers.
+     Servers which were specced on the command line go to the new list. */
+  for (serv = daemon->servers; serv;)
+    {
+      struct server *tmp = serv->next;
+      if (serv->flags & SERV_FROM_RESOLV)
+	{
+	  serv->next = old_servers;
+	  old_servers = serv;
+	  /* forward table rules reference servers, so have to blow them away */
+	  server_gone(serv);
+	}
+      else
+	{
+	  serv->next = new_servers;
+	  new_servers = serv;
+	}
+      serv = tmp;
+    }
+
+    char *next = s;
+    char *saddr;
+
+ while ((saddr = strsep(&next, ":"))) {
+      union mysockaddr addr, source_addr;
+      memset(&addr, 0, sizeof(addr));
+      memset(&source_addr, 0, sizeof(source_addr));
+
+      if ((addr.in.sin_addr.s_addr = inet_addr(saddr)) != (in_addr_t) -1)
+	{
+#ifdef HAVE_SOCKADDR_SA_LEN
+	  source_addr.in.sin_len = addr.in.sin_len = sizeof(source_addr.in);
+#endif
+	  source_addr.in.sin_family = addr.in.sin_family = AF_INET;
+	  addr.in.sin_port = htons(NAMESERVER_PORT);
+	  source_addr.in.sin_addr.s_addr = INADDR_ANY;
+	  source_addr.in.sin_port = htons(daemon->query_port);
+	}
+#ifdef HAVE_IPV6
+      else if (inet_pton(AF_INET6, saddr, &addr.in6.sin6_addr) > 0)
+	{
+#ifdef HAVE_SOCKADDR_SA_LEN
+	  source_addr.in6.sin6_len = addr.in6.sin6_len = sizeof(source_addr.in6);
+#endif
+	  source_addr.in6.sin6_family = addr.in6.sin6_family = AF_INET6;
+	  addr.in6.sin6_port = htons(NAMESERVER_PORT);
+	  source_addr.in6.sin6_addr = in6addr_any;
+	  source_addr.in6.sin6_port = htons(daemon->query_port);
+	}
+#endif /* IPV6 */
+      else
+	continue;
+
+      if (old_servers)
+	{
+	  serv = old_servers;
+	  old_servers = old_servers->next;
+	}
+      else if (!(serv = whine_malloc(sizeof (struct server))))
+	continue;
+
+      /* this list is reverse ordered:
+	 it gets reversed again in check_servers */
+      serv->next = new_servers;
+      new_servers = serv;
+      serv->addr = addr;
+      serv->source_addr = source_addr;
+      serv->domain = NULL;
+      serv->interface[0] = 0;
+      serv->sfd = NULL;
+      serv->flags = SERV_FROM_RESOLV;
+      serv->queries = serv->failed_queries = 0;
+    }
+
+  /* Free any memory not used. */
+  while (old_servers)
+    {
+      struct server *tmp = old_servers->next;
+      free(old_servers);
+      old_servers = tmp;
+    }
+
+  daemon->servers = new_servers;
+  return 0;
+}
+#endif
+
 /* Return zero if no servers found, in that case we keep polling.
    This is a protection against an update-time/write race on resolv.conf */
 int reload_servers(char *fname)

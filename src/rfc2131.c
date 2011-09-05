@@ -333,9 +333,9 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   
   if (!context)
     {
-      my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"), 
-		subnet_addr.s_addr ? _("with subnet selector") : _("via"),
-		subnet_addr.s_addr ? inet_ntoa(subnet_addr) : (mess->giaddr.s_addr ? inet_ntoa(mess->giaddr) : iface_name));
+//      my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"), 
+//		subnet_addr.s_addr ? _("with subnet selector") : _("via"),
+//		subnet_addr.s_addr ? inet_ntoa(subnet_addr) : (mess->giaddr.s_addr ? inet_ntoa(mess->giaddr) : iface_name));
       return 0;
     }
 
@@ -2323,10 +2323,3 @@ static void do_options(struct dhcp_context *context,
 }
 
 #endif
-  
-
-  
-  
-
-
-  
