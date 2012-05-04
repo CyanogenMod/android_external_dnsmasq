@@ -167,7 +167,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       mess_type = option_uint(opt, 0, 1);
 
       /* only insist on a cookie for DHCP. */
-      if (*((u32 *)&mess->options) != htonl(DHCP_COOKIE))
+      if (*mess->options32 != htonl(DHCP_COOKIE))
 	return 0;
 
       /* two things to note here: expand_buf may move the packet,
