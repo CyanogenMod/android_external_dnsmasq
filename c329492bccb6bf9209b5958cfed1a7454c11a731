@@ -1,0 +1,9 @@
+Change-Id: Ic329492bccb6bf9209b5958cfed1a7454c11a731
+Code-Review+2: Ricardo Cerqueira <cyanogenmod@cerqueira.org>
+Verified+1: Ricardo Cerqueira <cyanogenmod@cerqueira.org>
+Code-Review+1: Bernhard Rosenkraenzer <Bernhard.Rosenkranzer@linaro.org>
+Submitted-by: Ricardo Cerqueira <cyanogenmod@cerqueira.org>
+Submitted-at: Mon, 11 Jun 2012 04:31:56 +0400
+Reviewed-on: http://review.cyanogenmod.com/17363
+Project: CyanogenMod/android_external_dnsmasq
+Branch: refs/heads/ics
