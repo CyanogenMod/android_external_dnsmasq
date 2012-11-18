@@ -984,32 +984,40 @@ static int set_android_listeners(fd_set *set, int *maxfdp) {
 }
 
 static int check_android_listeners(fd_set *set) {
+    int retcode = 0;
     if (FD_ISSET(STDIN_FILENO, set)) {
         char buffer[1024];
         int rc;
+        int consumed = 0;
 
         if ((rc = read(STDIN_FILENO, buffer, sizeof(buffer) -1)) < 0) {
             my_syslog(LOG_ERR, _("Error reading from stdin (%s)"), strerror(errno));
             return -1;
         }
         buffer[rc] = '\0';
-        char *next = buffer;
-        char *cmd;
+        while(consumed < rc) {
+            char *cmd;
+            char *current_cmd = &buffer[consumed];
+            char *params = current_cmd;
+            int len = strlen(current_cmd);
 
-        if (!(cmd = strsep(&next, ":"))) {
-            my_syslog(LOG_ERR, _("Malformatted msg '%s'"), buffer);
-            return -1;
-        }
-
-        if (!strcmp(buffer, "update_dns")) {
-            set_servers(&buffer[11]);
-            check_servers();
-        } else {
-            my_syslog(LOG_ERR, _("Unknown cmd '%s'"), cmd);
-            return -1;
+            cmd = strsep(&params, ":");
+            if (!strcmp(cmd, "update_dns")) {
+                if (params != NULL) {
+                    set_servers(params);
+                    check_servers();
+                } else {
+                    my_syslog(LOG_ERR, _("Malformatted msg '%s'"), current_cmd);
+                    retcode = -1;
+                }
+            } else {
+                 my_syslog(LOG_ERR, _("Unknown cmd '%s'"), cmd);
+                 retcode = -1;
+            }
+            consumed += len + 1;
         }
     }
-    return 0;
+    return retcode;
 }
 #endif
 
