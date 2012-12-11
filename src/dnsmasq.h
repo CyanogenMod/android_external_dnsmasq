@@ -781,6 +781,7 @@ void pre_allocate_sfds(void);
 int reload_servers(char *fname);
 #ifdef __ANDROID__
 int set_servers(const char *servers);
+void set_interfaces(const char *interfaces);
 #endif
 void check_servers(void);
 int enumerate_interfaces();
