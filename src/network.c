@@ -956,6 +956,21 @@ void set_interfaces(const char *interfaces)
 
         close_bound_listener(old_iface);
       }
+      else
+      {
+        struct listener **l, *listener;
+        for (l = &(daemon->listeners); *l; l = &((*l)->next)) {
+          struct irec *listener_iface = (*l)->iface;
+          if (listener_iface && new_iface) {
+            if (sockaddr_isequal(&listener_iface->addr, &new_iface->addr)) {
+              break;
+            }
+          }
+        }
+        listener = *l;
+        if ( listener )
+          listener->iface = new_iface;
+      }
     }
 
     /* remove wildchar listeners */
