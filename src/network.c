@@ -934,7 +934,7 @@ void set_interfaces(const char *interfaces)
 
     for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next) {
         if (if_tmp->name && !if_tmp->used) {
-            die(_("unknown interface given %s in set_interfaces: %s"), if_tmp->name, EC_BADNET);
+            my_syslog(LOG_DEBUG, _("unknown interface given %s in set_interfaces: %s"), if_tmp->name);
         }
     }
     /* success! - setup to free the old */
