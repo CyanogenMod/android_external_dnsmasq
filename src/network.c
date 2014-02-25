@@ -961,7 +961,7 @@ void set_interfaces(const char *interfaces)
 
     for (if_tmp = daemon->if_names; if_tmp; if_tmp = if_tmp->next) {
         if (if_tmp->name && !if_tmp->used) {
-            die(_("unknown interface given %s in set_interfaces: %s"), if_tmp->name, EC_BADNET);
+            my_syslog(LOG_DEBUG, _("unknown interface given %s in set_interfaces"), if_tmp->name);
         }
     }
     /* success! - setup to free the old */
@@ -985,6 +985,21 @@ void set_interfaces(const char *interfaces)
 #endif
 
         close_bound_listener(old_iface);
+      }
+      else
+      {
+        struct listener **l, *listener;
+        for (l = &(daemon->listeners); *l; l = &((*l)->next)) {
+          struct irec *listener_iface = (*l)->iface;
+          if (listener_iface && new_iface) {
+            if (sockaddr_isequal(&listener_iface->addr, &new_iface->addr)) {
+              break;
+            }
+          }
+        }
+        listener = *l;
+        if ( listener )
+          listener->iface = new_iface;
       }
     }
 
