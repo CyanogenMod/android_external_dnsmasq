@@ -321,6 +321,7 @@ struct serverfd {
   union mysockaddr source_addr;
   char interface[IF_NAMESIZE+1];
   struct serverfd *next;
+  uint32_t mark;
 };
 
 struct randfd {
@@ -335,6 +336,7 @@ struct server {
   char *domain; /* set if this server only handles a domain. */ 
   int flags, tcpfd;
   unsigned int queries, failed_queries;
+  uint32_t mark;
   struct server *next; 
 };
 
@@ -775,7 +777,7 @@ struct frec *get_new_frec(time_t now, int *wait);
 
 /* network.c */
 int indextoname(int fd, int index, char *name);
-int local_bind(int fd, union mysockaddr *addr, char *intname, int is_tcp);
+int local_bind(int fd, union mysockaddr *addr, char *intname, uint32_t mark, int is_tcp);
 int random_sock(int family);
 void pre_allocate_sfds(void);
 int reload_servers(char *fname);
