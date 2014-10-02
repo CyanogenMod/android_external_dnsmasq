@@ -479,6 +479,31 @@ void create_bound_listener(struct listener **listeners, struct irec *iface)
 }
 
 /**
+ * If a listener has a struct irec pointer whose address matches the newly
+ * malloc()d struct irec's address, update its pointer to refer to this new
+ * struct irec instance.
+ *
+ * Otherwise, any listeners that are preserved across interface list changes
+ * will point at interface structures that are free()d at the end of
+ * set_interfaces(), and can get overwritten by subsequent memory allocations.
+ *
+ * See b/17475756 for further discussion.
+ */
+void fixup_possible_existing_listener(struct irec *new_iface) {
+  /* find the listener, if present */
+  struct listener *l;
+  for (l = daemon->listeners; l; l = l->next) {
+    struct irec *listener_iface = l->iface;
+    if (listener_iface) {
+      if (sockaddr_isequal(&listener_iface->addr, &new_iface->addr)) {
+        l->iface = new_iface;
+        return;
+      }
+    }
+  }
+}
+
+/**
  * Close the sockets listening on the given interface
  *
  * This new function is needed as we're dynamically changing the interfaces
@@ -922,7 +947,7 @@ void set_interfaces(const char *interfaces)
     strncpy(s, interfaces, sizeof(s));
     while((interface = strsep(&next, ":"))) {
         if_tmp = safe_malloc(sizeof(struct iname));
-        memset(if_tmp, sizeof(struct iname), 0);
+        memset(if_tmp, 0, sizeof(struct iname));
         if ((if_tmp->name = strdup(interface)) == NULL) {
             die(_("malloc failure in set_interfaces: %s"), NULL, EC_BADNET);
         }
@@ -945,11 +970,14 @@ void set_interfaces(const char *interfaces)
       int found = 0;
       for (new_iface = daemon->interfaces; new_iface; new_iface = new_iface->next) {
         if (sockaddr_isequal(&old_iface->addr, &new_iface->addr)) {
-            found = -1;
+            found = 1;
             break;
         }
       }
-      if (!found) {
+
+      if (found) {
+        fixup_possible_existing_listener(new_iface);
+      } else {
 #ifdef __ANDROID_DEBUG__
         char debug_buff[MAXDNAME];
         prettyprint_addr(&old_iface->addr, debug_buff);
