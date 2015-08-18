@@ -309,6 +309,7 @@ static int create_ipv6_listener(struct listener **link, int port)
   l->tcpfd = tcpfd;
   l->tftpfd = -1;
   l->family = AF_INET6;
+  l->iface = NULL;
   l->next = NULL;
   *link = l;
   
@@ -381,6 +382,7 @@ struct listener *create_wildcard_listeners(void)
   l->fd = fd;
   l->tcpfd = tcpfd;
   l->tftpfd = tftpfd;
+  l->iface = NULL;
   l->next = l6;
 
   return l;
