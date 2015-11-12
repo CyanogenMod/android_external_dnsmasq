@@ -16,6 +16,8 @@
 
 #include "dnsmasq.h"
 
+static const char SEPARATOR[] = "|";
+
 #ifdef HAVE_LINUX_NETWORK
 
 int indextoname(int fd, int index, char *name)
@@ -922,7 +924,7 @@ void check_servers(void)
  * Ingests a new list of interfaces and starts to listen on them, adding only the new
  * and stopping to listen to any interfaces not on the new list.
  *
- * interfaces - input in the format "bt-pan:eth0:wlan0:..>" up to 1024 bytes long
+ * interfaces - input in the format "bt-pan|eth0|wlan0|..>" up to 1024 bytes long
  */
 void set_interfaces(const char *interfaces)
 {
@@ -947,7 +949,7 @@ void set_interfaces(const char *interfaces)
         die(_("interface string too long: %s"), NULL, EC_BADNET);
     }
     strncpy(s, interfaces, sizeof(s));
-    while((interface = strsep(&next, ":"))) {
+    while((interface = strsep(&next, SEPARATOR))) {
         if_tmp = safe_malloc(sizeof(struct iname));
         memset(if_tmp, 0, sizeof(struct iname));
         if ((if_tmp->name = strdup(interface)) == NULL) {
@@ -1034,7 +1036,7 @@ void set_interfaces(const char *interfaces)
 }
 
 /*
- * Takes a string in the format "0x100b:1.2.3.4:1.2.3.4:..." - up to 1024 bytes in length
+ * Takes a string in the format "0x100b|1.2.3.4|1.2.3.4|..." - up to 1024 bytes in length
  *  - The first element is the socket mark to set on sockets that forward DNS queries.
  *  - The subsequent elements are the DNS servers to forward queries to.
  */
@@ -1074,10 +1076,10 @@ int set_servers(const char *servers)
   char *saddr;
 
   /* Parse the mark. */
-  mark_string = strsep(&next, ":");
+  mark_string = strsep(&next, SEPARATOR);
   mark = strtoul(mark_string, NULL, 0);
 
-  while ((saddr = strsep(&next, ":"))) {
+  while ((saddr = strsep(&next, SEPARATOR))) {
       union mysockaddr addr, source_addr;
       memset(&addr, 0, sizeof(addr));
       memset(&source_addr, 0, sizeof(source_addr));

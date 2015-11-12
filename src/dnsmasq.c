@@ -1007,7 +1007,7 @@ static int check_android_listeners(fd_set *set) {
             char *params = current_cmd;
             int len = strlen(current_cmd);
 
-            cmd = strsep(&params, ":");
+            cmd = strsep(&params, "|");
             if (!strcmp(cmd, "update_dns")) {
                 if (params != NULL) {
                     set_servers(params);
