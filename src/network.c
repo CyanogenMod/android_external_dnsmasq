@@ -508,33 +508,20 @@ void fixup_possible_existing_listener(struct irec *new_iface) {
 }
 
 /**
- * Close the sockets listening on the given interface
+ * Closes the sockets of the specified listener, deletes it from the list, and frees it.
  *
- * This new function is needed as we're dynamically changing the interfaces
- * we listen on.  Before they'd be opened once in create_bound_listeners and stay
- * until we exited.  Now, if an interface moves off the to-listen list we need to
- * close out the listeners and keep trucking.
- *
- * interface - input of the interface details to listen on
  */
-int close_bound_listener(struct irec *interface)
+int delete_listener(struct listener **l)
 {
-  /* find the listener */
-  struct listener **l, *listener;
-  for (l = &(daemon->listeners); *l; l = &((*l)->next)) {
-    struct irec *listener_iface = (*l)->iface;
-    if (listener_iface && interface) {
-      if (sockaddr_isequal(&listener_iface->addr, &interface->addr)) {
-        break;
-      }
-    } else {
-      if (interface == NULL && listener_iface == NULL) {
-        break;
-      }
-    }
-  }
-  listener = *l;
+  struct listener *listener = *l;
   if (listener == NULL) return 0;
+
+  if (listener->iface) {
+    int port = prettyprint_addr(&listener->iface->addr, daemon->namebuff);
+    my_syslog(LOG_INFO, _("Closing listener [%s]:%d"), daemon->namebuff, port);
+  } else {
+    my_syslog(LOG_INFO, _("Closing wildcard listener family=%d"), listener->family);
+  }
 
   if (listener->tftpfd != -1)
   {
@@ -554,6 +541,39 @@ int close_bound_listener(struct irec *interface)
   *l = listener->next;
   free(listener);
   return -1;
+}
+
+/**
+ * Close the sockets listening on the given interface
+ *
+ * This new function is needed as we're dynamically changing the interfaces
+ * we listen on.  Before they'd be opened once in create_bound_listeners and stay
+ * until we exited.  Now, if an interface moves off the to-listen list we need to
+ * close out the listeners and keep trucking.
+ *
+ * interface - input of the interface details to listen on
+ */
+int close_bound_listener(struct irec *iface)
+{
+  /* find the listener */
+  int ret = 0;
+  struct listener **l = &daemon->listeners;
+  while (*l) {
+    struct irec *listener_iface = (*l)->iface;
+    struct listener **next = &((*l)->next);
+    if (iface && listener_iface && sockaddr_isequal(&listener_iface->addr, &iface->addr)) {
+      // Listener bound to an IP address. There can be only one of these.
+      ret = delete_listener(l);
+      break;
+    }
+    if (iface == NULL && listener_iface == NULL) {
+      // Wildcard listener. There is one of these per address family.
+      ret = delete_listener(l);
+      continue;
+    }
+    l = next;
+  }
+  return ret;
 }
 #endif /* __ANDROID__ */
 
