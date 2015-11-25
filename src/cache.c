@@ -1245,6 +1245,7 @@ void log_query(unsigned short flags, char *name, struct all_addr *addr, char *ar
   if (addr)
     {
 #ifdef HAVE_IPV6
+      /* TODO: support scoped addresses. struct all_addr doesn't store scope IDs. */
       inet_ntop(flags & F_IPV4 ? AF_INET : AF_INET6,
 		addr, addrbuff, ADDRSTRLEN);
 #else

@@ -458,6 +458,8 @@ void create_bound_listener(struct listener **listeners, struct irec *iface)
       /* An interface may have an IPv6 address which is still undergoing DAD.
          If so, the bind will fail until the DAD completes, so we try over 20 seconds
          before failing. */
+      /* TODO: What to do here? 20 seconds is way too long. We use optimistic addresses, so bind()
+         will only fail if the address has already failed DAD, in which case retrying won't help. */
       if (iface->addr.sa.sa_family == AF_INET6 && (errno == ENODEV || errno == EADDRNOTAVAIL) &&
           dad_count++ < DAD_WAIT)
       {

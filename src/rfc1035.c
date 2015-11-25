@@ -241,6 +241,8 @@ static int in_arpa_name_2_addr(char *namein, struct all_addr *addrp)
 	 that we can since there is no reason not to.
       */
 
+      /* TODO: does this make sense? */
+
       if (*name == '\\' && *(name+1) == '[' && 
 	  (*(name+2) == 'x' || *(name+2) == 'X'))
 	{	  
