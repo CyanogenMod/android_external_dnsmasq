@@ -1352,25 +1352,9 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 	comma = split(arg);
 	unhide_metas(arg);
 	new->next = daemon->if_addrs;
-	if (arg && (new->addr.in.sin_addr.s_addr = inet_addr(arg)) != (in_addr_t)-1)
-	  {
-	    new->addr.sa.sa_family = AF_INET;
-#ifdef HAVE_SOCKADDR_SA_LEN
-	    new->addr.in.sin_len = sizeof(new->addr.in);
-#endif
-	  }
-#ifdef HAVE_IPV6
-	else if (arg && inet_pton(AF_INET6, arg, &new->addr.in6.sin6_addr) > 0)
-	  {
-	    new->addr.sa.sa_family = AF_INET6;
-	    new->addr.in6.sin6_flowinfo = 0;
-	    new->addr.in6.sin6_scope_id = 0;
-#ifdef HAVE_SOCKADDR_SA_LEN
-	    new->addr.in6.sin6_len = sizeof(new->addr.in6);
-#endif
-	  }
-#endif
-	else
+	if (arg &&
+	    parse_addr(AF_INET, arg, &new->addr) != 0 &&
+	    parse_addr(AF_INET6, arg, &new->addr) != 0)
 	  {
 	    option = '?'; /* error */
 	    break;
@@ -1449,18 +1433,16 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 		!atoi_check16(portno, &serv_port))
 	      problem = _("bad port");
 	    
-	    if ((newlist->addr.in.sin_addr.s_addr = inet_addr(arg)) != (in_addr_t) -1)
+	    if (parse_addr(AF_INET, arg, &newlist->addr) == 0)
 	      {
 		newlist->addr.in.sin_port = htons(serv_port);	
-		newlist->source_addr.in.sin_port = htons(source_port); 
-		newlist->addr.sa.sa_family = newlist->source_addr.sa.sa_family = AF_INET;
 #ifdef HAVE_SOCKADDR_SA_LEN
 		newlist->source_addr.in.sin_len = newlist->addr.in.sin_len = sizeof(struct sockaddr_in);
 #endif
 		if (source)
 		  {
 		    newlist->flags |= SERV_HAS_SOURCE;
-		    if ((newlist->source_addr.in.sin_addr.s_addr = inet_addr(source)) == (in_addr_t) -1)
+		    if (parse_addr(AF_INET, source, &newlist->addr) != 0)
 		      {
 #if defined(SO_BINDTODEVICE)
 			newlist->source_addr.in.sin_addr.s_addr = INADDR_ANY;
@@ -1472,20 +1454,18 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 		  }
 		else
 		  newlist->source_addr.in.sin_addr.s_addr = INADDR_ANY;
+
+		newlist->source_addr.in.sin_port = htons(source_port);
+		newlist->source_addr.sa.sa_family = AF_INET;
 	      }
 #ifdef HAVE_IPV6
-	    else if (inet_pton(AF_INET6, arg, &newlist->addr.in6.sin6_addr) > 0)
+	    else if (parse_addr(AF_INET6, arg, &newlist->addr) == 0)
 	      {
 		newlist->addr.in6.sin6_port = htons(serv_port);
-		newlist->source_addr.in6.sin6_port = htons(source_port);
-		newlist->addr.sa.sa_family = newlist->source_addr.sa.sa_family = AF_INET6;
-#ifdef HAVE_SOCKADDR_SA_LEN
-		newlist->addr.in6.sin6_len = newlist->source_addr.in6.sin6_len = sizeof(newlist->addr.in6);
-#endif
 		if (source)
 		  {
 		     newlist->flags |= SERV_HAS_SOURCE;
-		     if (inet_pton(AF_INET6, source, &newlist->source_addr.in6.sin6_addr) == 0)
+		     if (parse_addr(AF_INET6, source, &newlist->source_addr) != 0)
 		      {
 #if defined(SO_BINDTODEVICE)
 			newlist->source_addr.in6.sin6_addr = in6addr_any; 
@@ -1497,6 +1477,9 @@ static char *one_opt(int option, char *arg, char *gen_prob, int nest)
 		  }
 		else
 		  newlist->source_addr.in6.sin6_addr = in6addr_any; 
+
+		newlist->source_addr.in6.sin6_port = htons(source_port);
+		newlist->source_addr.sa.sa_family = AF_INET6;
 	      }
 #endif
 	    else

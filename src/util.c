@@ -20,6 +20,8 @@
 
 #include "dnsmasq.h"
 
+#include <netdb.h>
+
 #ifdef HAVE_BROKEN_RTC
 #include <sys/times.h>
 #endif
@@ -260,7 +262,9 @@ int sockaddr_isequal(union mysockaddr *s1, union mysockaddr *s2)
 #ifdef HAVE_IPV6      
       if (s1->sa.sa_family == AF_INET6 &&
 	  s1->in6.sin6_port == s2->in6.sin6_port &&
-	  IN6_ARE_ADDR_EQUAL(&s1->in6.sin6_addr, &s2->in6.sin6_addr))
+	  IN6_ARE_ADDR_EQUAL(&s1->in6.sin6_addr, &s2->in6.sin6_addr) &&
+	  (!IN6_IS_ADDR_LINKLOCAL(&s1->in6.sin6_addr) ||
+	   (s1->in6.sin6_scope_id == s2->in6.sin6_scope_id)))
 	return 1;
 #endif
     }
@@ -322,22 +326,47 @@ int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask)
   return (a.s_addr & mask.s_addr) == (b.s_addr & mask.s_addr);
 } 
 
+int parse_addr(int family, const char *addrstr, union mysockaddr *addr)
+{
+  struct addrinfo *res, hints = {
+    .ai_flags = AI_NUMERICHOST,
+    .ai_family = family,
+    .ai_socktype = SOCK_DGRAM,
+  };
+
+  int ret = getaddrinfo(addrstr, NULL, &hints, &res);
+  if (ret) {
+    return ret;
+  }
+
+  switch (res->ai_family) {
+    case AF_INET:
+      addr->in = *((struct sockaddr_in *) res->ai_addr);
+      break;
+#ifdef HAVE_IPV6
+    case AF_INET6:
+      addr->in6 = *((struct sockaddr_in6 *) res->ai_addr);
+      break;
+#endif
+    default:
+      errno = EAFNOSUPPORT;
+      ret = -1;
+      break;
+  }
+  freeaddrinfo(res);
+  return ret;
+}
+
 /* returns port number from address */
-int prettyprint_addr(union mysockaddr *addr, char *buf)
+int prettyprint_addr(const union mysockaddr *addr, char *buf)
 {
   int port = 0;
   
 #ifdef HAVE_IPV6
-  if (addr->sa.sa_family == AF_INET)
-    {
-      inet_ntop(AF_INET, &addr->in.sin_addr, buf, ADDRSTRLEN);
-      port = ntohs(addr->in.sin_port);
-    }
-  else if (addr->sa.sa_family == AF_INET6)
-    {
-      inet_ntop(AF_INET6, &addr->in6.sin6_addr, buf, ADDRSTRLEN);
-      port = ntohs(addr->in6.sin6_port);
-    }
+  char portstr[strlen("65535")];
+  getnameinfo((const struct sockaddr *) addr, sizeof(*addr), buf, ADDRSTRLEN,
+              portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
+  port = atoi(portstr);
 #else
   strcpy(buf, inet_ntoa(addr->in.sin_addr));
   port = ntohs(addr->in.sin_port); 

@@ -742,8 +742,9 @@ int hostname_isequal(char *a, char *b);
 time_t dnsmasq_time(void);
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask);
 int retry_send(void);
+int parse_addr(int family, const char *addrstr, union mysockaddr *addr);
 void prettyprint_time(char *buf, unsigned int t);
-int prettyprint_addr(union mysockaddr *addr, char *buf);
+int prettyprint_addr(const union mysockaddr *addr, char *buf);
 int parse_hex(char *in, unsigned char *out, int maxlen, 
 	      unsigned int *wildcard_mask, int *mac_type);
 int memcmp_masked(unsigned char *a, unsigned char *b, int len, 

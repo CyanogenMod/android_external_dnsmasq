@@ -104,7 +104,9 @@ int iface_check(int family, struct all_addr *addr, char *name, int *indexp)
 #ifdef HAVE_IPV6
 	    else if (family == AF_INET6 &&
 		     IN6_ARE_ADDR_EQUAL(&tmp->addr.in6.sin6_addr, 
-					&addr->addr.addr6))
+					&addr->addr.addr6) &&
+		     (!IN6_IS_ADDR_LINKLOCAL(&addr->addr.addr6) ||
+		      (tmp->addr.in6.sin6_scope_id == (uint32_t) *indexp)))
 	      ret = tmp->used = 1;
 #endif
 	  }          
@@ -184,8 +186,9 @@ static int iface_allowed(struct irec **irecp, int if_index,
       dhcp_ok = 0;
   
 #ifdef HAVE_IPV6
+  int ifindex = (int) addr->in6.sin6_scope_id;
   if (addr->sa.sa_family == AF_INET6 &&
-      !iface_check(AF_INET6, (struct all_addr *)&addr->in6.sin6_addr, ifr.ifr_name, NULL))
+      !iface_check(AF_INET6, (struct all_addr *)&addr->in6.sin6_addr, ifr.ifr_name, &ifindex))
     return 1;
 #endif
 
@@ -221,7 +224,15 @@ static int iface_allowed_v6(struct in6_addr *local,
   addr.in6.sin6_family = AF_INET6;
   addr.in6.sin6_addr = *local;
   addr.in6.sin6_port = htons(daemon->port);
-  addr.in6.sin6_scope_id = scope;
+  /**
+   * Only populate the scope ID if the address is link-local.
+   * Scope IDs are not meaningful for global addresses. Also, we do not want to
+   * think that two addresses are different if they differ only in scope ID,
+   * because the kernel will treat them as if they are the same.
+   */
+  if (IN6_IS_ADDR_LINKLOCAL(local)) {
+    addr.in6.sin6_scope_id = scope;
+  }
   
   return iface_allowed((struct irec **)vparam, if_index, &addr, netmask);
 }
@@ -1104,24 +1115,18 @@ int set_servers(const char *servers)
       memset(&addr, 0, sizeof(addr));
       memset(&source_addr, 0, sizeof(source_addr));
 
-      if ((addr.in.sin_addr.s_addr = inet_addr(saddr)) != (in_addr_t) -1)
+      if (parse_addr(AF_INET, saddr, &addr) == 0)
 	{
-#ifdef HAVE_SOCKADDR_SA_LEN
-	  source_addr.in.sin_len = addr.in.sin_len = sizeof(source_addr.in);
-#endif
-	  source_addr.in.sin_family = addr.in.sin_family = AF_INET;
 	  addr.in.sin_port = htons(NAMESERVER_PORT);
+	  source_addr.in.sin_family = AF_INET;
 	  source_addr.in.sin_addr.s_addr = INADDR_ANY;
 	  source_addr.in.sin_port = htons(daemon->query_port);
 	}
 #ifdef HAVE_IPV6
-      else if (inet_pton(AF_INET6, saddr, &addr.in6.sin6_addr) > 0)
+      else if (parse_addr(AF_INET6, saddr, &addr) == 0)
 	{
-#ifdef HAVE_SOCKADDR_SA_LEN
-	  source_addr.in6.sin6_len = addr.in6.sin6_len = sizeof(source_addr.in6);
-#endif
-	  source_addr.in6.sin6_family = addr.in6.sin6_family = AF_INET6;
 	  addr.in6.sin6_port = htons(NAMESERVER_PORT);
+	  source_addr.in6.sin6_family = AF_INET6;
 	  source_addr.in6.sin6_addr = in6addr_any;
 	  source_addr.in6.sin6_port = htons(daemon->query_port);
 	}
@@ -1217,25 +1222,19 @@ int reload_servers(char *fname)
       
       memset(&addr, 0, sizeof(addr));
       memset(&source_addr, 0, sizeof(source_addr));
-      
-      if ((addr.in.sin_addr.s_addr = inet_addr(token)) != (in_addr_t) -1)
+
+      if (parse_addr(AF_INET, token, &addr) == 0)
 	{
-#ifdef HAVE_SOCKADDR_SA_LEN
-	  source_addr.in.sin_len = addr.in.sin_len = sizeof(source_addr.in);
-#endif
-	  source_addr.in.sin_family = addr.in.sin_family = AF_INET;
 	  addr.in.sin_port = htons(NAMESERVER_PORT);
+	  source_addr.in.sin_family = AF_INET;
 	  source_addr.in.sin_addr.s_addr = INADDR_ANY;
 	  source_addr.in.sin_port = htons(daemon->query_port);
 	}
 #ifdef HAVE_IPV6
-      else if (inet_pton(AF_INET6, token, &addr.in6.sin6_addr) > 0)
+      else if (parse_addr(AF_INET6, token, &addr) == 0)
 	{
-#ifdef HAVE_SOCKADDR_SA_LEN
-	  source_addr.in6.sin6_len = addr.in6.sin6_len = sizeof(source_addr.in6);
-#endif
-	  source_addr.in6.sin6_family = addr.in6.sin6_family = AF_INET6;
 	  addr.in6.sin6_port = htons(NAMESERVER_PORT);
+	  source_addr.in6.sin6_family = AF_INET6;
 	  source_addr.in6.sin6_addr = in6addr_any;
 	  source_addr.in6.sin6_port = htons(daemon->query_port);
 	}
